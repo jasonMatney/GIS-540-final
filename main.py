@@ -27,6 +27,8 @@ produce a user friendly interface for the researcher to follow.
 import arcpy, os
 import pandas as pd
 from arcpy import env
+from rpy2.robjects.packages import importr
+import rpy2.robjects as ro
 
 def find_all_csv(workspace):
     prev_workspace = arcpy.env.workspace
@@ -112,26 +114,44 @@ try:
     arcpy.gp.overwriteOutput = True
     arcpy.env.workspace = os.path.join(Workspace, outputfolder) + "/shapefiles"
 
-    # Define spatial projection
     infc = "covariates.shp"
-    # Get NAD 1983 Alaska Albers Spatial reference
-    prjfile = arcpy.SpatialReference(3338)
-    arcpy.DefineProjection_management(infc, prjfile)
+    outfc = "covariates_proj.shp"
+    ro.r('if (!require("pacman")) install.packages("pacman")')
+    ro.r('pacman::p_load(sp, rgdal, raster)')
+    ro.globalenv['dsn'] = arcpy.env.workspace
+    ro.r('ak_proj <- readOGR(dsn, "AK_proj")')
+    ro.r('covariates  <- readOGR(dsn,"covariates")')
+    ro.r('a  <- project(covariates@coords, proj4string(ak_proj))')
+    ro.r('b <- cbind(a, covariates@data[,1:6])')
+    ro.r('colnames(b) <- c("x","y","permafrost","heatload","temp","slope","cti","texture")')
+    ro.r('coordinates(b) <-~x+y')
+    ro.r('proj4string(b) <- proj4string(ak_proj)')
+    ro.r('ab <- spTransform(b,CRS(proj4string(ak_proj)))')
+    if arcpy.Exists(outfc):
+            arcpy.Delete_management(outfc)
+    ro.r('writeOGR(b, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
 
-    # create projected outfile
-    input_feature = "covariates.shp"
-    output_feature_class = "covariates_proj.shp"
-    out_coordinate_system = arcpy.SpatialReference(3338)
-    arcpy.Project_management(input_feature, output_feature_class, out_coordinate_system)
+    # # Define spatial projection
+    # infc = "covariates.shp"
+    # # Get NAD 1983 Alaska Albers Spatial reference
+    # prjfile = arcpy.SpatialReference(3338)
+    # arcpy.DefineProjection_management(infc, prjfile)
+    #
+    # # create projected outfile
+    # input_feature = "covariates.shp"
+    # output_feature_class = "covariates_proj.shp"
+    # out_coordinate_system = arcpy.SpatialReference(3338)
+    # arcpy.Project_management(input_feature, output_feature_class, out_coordinate_system)
 
+    # Reprojection done in R
     # # Join the permafrost feature class to the Covariate feature class
     # # Process: Spatial Join
     fieldMappings = arcpy.FieldMappings()
-    fieldMappings.addTable("denali_proj.shp")
+    fieldMappings.addTable("denali.shp")
     fieldMappings.addTable("covariates_proj_clip.shp")
 
     arcpy.AddMessage("\tPerforming Spatial Join Analysis on Permafrost Data...")
-    sj = arcpy.SpatialJoin_analysis("denali_proj.shp", "covariates_proj_clip.shp", "spatial_join.shp",
+    sj = arcpy.SpatialJoin_analysis("denali.shp", "covariates_proj_clip.shp", "spatial_join.shp",
                                     "JOIN_ONE_TO_MANY",
                                     "KEEP_ALL",
                                     fieldMappings,
