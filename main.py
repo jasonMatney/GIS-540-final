@@ -131,19 +131,8 @@ try:
             arcpy.Delete_management(outfc)
     ro.r('writeOGR(b, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
 
-    # # Define spatial projection
-    # infc = "covariates.shp"
-    # # Get NAD 1983 Alaska Albers Spatial reference
-    # prjfile = arcpy.SpatialReference(3338)
-    # arcpy.DefineProjection_management(infc, prjfile)
-    #
-    # # create projected outfile
-    # input_feature = "covariates.shp"
-    # output_feature_class = "covariates_proj.shp"
-    # out_coordinate_system = arcpy.SpatialReference(3338)
-    # arcpy.Project_management(input_feature, output_feature_class, out_coordinate_system)
-
     # Reprojection done in R
+
     # # Join the permafrost feature class to the Covariate feature class
     # # Process: Spatial Join
     fieldMappings = arcpy.FieldMappings()
@@ -160,7 +149,27 @@ try:
     # Delete extra fields to clean up the data
     # Process: Delete Field
     arcpy.AddMessage("\tDeleting Fields...")
-    arcpy.DeleteField_management("spatial_join.shp", "SP_ID;OBJECTID;NAME;STATE_NAME;STATE_FIPS;CNTY_FIPS;FIPS;POP2010;POP10_SQMI;POP2013;POP13_SQMI;WHITE;BLACK;AMERI_ES;ASIAN;HAWN_PI;HISPANIC;OTHER;MULT_RACE;MALES;FEMALES;AGE_UNDER5;AGE_5_9;AGE_10_14;AGE_15_19;AGE_20_24;AGE_25_34;AGE_35_44;AGE_45_54;AGE_55_64;AGE_65_74;AGE_75_84;AGE_85_UP;MED_AGE;MED_AGE_M;MED_AGE_F;HOUSEHOLDS;AVE_HH_SZ;HSEHLD_1_M;HSEHLD_1_F;MARHH_CHD;MARHH_NO_C;MHH_CHILD;FHH_CHILD;FAMILIES;AVE_FAM_SZ;HSE_UNITS;VACANT;OWNER_OCC;RENTER_OCC;NO_FARMS12;AVE_SIZE12;CROP_ACR12;AVE_SALE12;SQMI;Shape_Leng;Shape_Area;TARGET_FID;Join_Count;STATE_NAME;DRAWSEQ;STATE_FIPS;SUB_REGION;STATE_ABBR")
+    arcpy.DeleteField_management("spatial_join.shp", "SP_ID;OBJECTID;"
+                                                     "NAME;STATE_NAME;"
+                                                     "STATE_FIPS;CNTY_FIPS;"
+                                                     "FIPS;POP2010;POP10_SQMI;"
+                                                     "POP2013;POP13_SQMI;WHITE;"
+                                                     "BLACK;AMERI_ES;ASIAN;HAWN_PI;"
+                                                     "HISPANIC;OTHER;MULT_RACE;MALES;"
+                                                     "FEMALES;AGE_UNDER5;AGE_5_9;"
+                                                     "AGE_10_14;AGE_15_19;AGE_20_24;"
+                                                     "AGE_25_34;AGE_35_44;AGE_45_54;"
+                                                     "AGE_55_64;AGE_65_74;AGE_75_84;"
+                                                     "AGE_85_UP;MED_AGE;MED_AGE_M;"
+                                                     "MED_AGE_F;HOUSEHOLDS;AVE_HH_SZ;"
+                                                     "HSEHLD_1_M;HSEHLD_1_F;MARHH_CHD;"
+                                                     "MARHH_NO_C;MHH_CHILD;FHH_CHILD;"
+                                                     "FAMILIES;AVE_FAM_SZ;HSE_UNITS;"
+                                                     "VACANT;OWNER_OCC;RENTER_OCC;NO_FARMS12;"
+                                                     "AVE_SIZE12;CROP_ACR12;AVE_SALE12;"
+                                                     "SQMI;Shape_Leng;Shape_Area;TARGET_FID;"
+                                                     "Join_Count;STATE_NAME;DRAWSEQ;STATE_FIPS;"
+                                                     "SUB_REGION;STATE_ABBR")
     arcpy.AddMessage("\tListing Remaining Fields...")
 
     layer_fields = arcpy.ListFields("spatial_join.shp")
@@ -212,96 +221,4 @@ except arcpy.ExecuteError("An error occurred during processing:\n"):
     arcpy.AddError(msgs)
     arcpy.AddError("\nP Check that inputs are formatted correctly.")
 
-# # Make RouteDirections object to pull direction information off of it
-# d = VRPS.RouteDirection(directions)
-#
-# # update sublayers name reference
-# ordersLayer = arcpy.mapping.ListLayers(mxd, "Orders")[0]
-# depotsLayer = arcpy.mapping.ListLayers(mxd, "Depots")[0]
-# routesLayer = arcpy.mapping.ListLayers(mxd, "Routes")[0]
-#
-#
-# # Start mapbook and upload processing for each inspector
-# arcpy.AddMessage("Starting Mapbook processing...")
-# routesCursor = arcpy.da.SearchCursor(routestable, ["Name"])
-# routebookcollection = []
-# for inspector_row in routesCursor:
-#     Name = inspector_row[0]
-#     # Create empty Route book PDF
-#     arcpy.AddMessage("\tStarting {}'s mapbook...".format(Name))
-#     pdf_path = os.path.join(outputfolder, "{0}_RouteBook_{1}.pdf".format(Name, date))
-#     pdf = arcpy.mapping.PDFDocumentCreate(pdf_path)
-#     routebookcollection.append(pdf_path)
-#     # select individual inspector orders
-#     arcpy.SelectLayerByAttribute_management(depotsLayer, "NEW_SELECTION",\
-#             "Name = 'Assessors Office'")
-#     arcpy.SelectLayerByAttribute_management(ordersLayer, "NEW_SELECTION",\
-#             "RouteName = '{}'".format(Name))
-#     count = int(arcpy.GetCount_management(ordersLayer).getOutput(0))
-#     sequence_num = 2
-#     # Create a temporary folder in the output to build order pages
-#     outputfolder_temp = os.path.join(outputfolder, Name + "_temp")
-#     if arcpy.Exists(outputfolder_temp):
-#         arcpy.Delete_management(outputfolder_temp)
-#     os.makedirs(outputfolder_temp)
-#     # start page build
-#     while sequence_num <= (count + 1):
-#         if sequence_num == 2:
-#             arcpy.SelectLayerByAttribute_management(ordersLayer, \
-#                     "NEW_SELECTION", \
-#                     "Sequence = 2 AND RouteName = '{0}'".format(Name))
-#         else:
-#             arcpy.SelectLayerByAttribute_management(depotsLayer, \
-#                         "CLEAR_SELECTION")
-#             arcpy.SelectLayerByAttribute_management(ordersLayer, \
-#                 "NEW_SELECTION", \
-#                 "(Sequence = {0} OR Sequence = {1}) AND RouteName = '{2}'".format(\
-#                 sequence_num, (sequence_num - 1), Name))
-#         df.zoomToSelectedFeatures()
-#         df.scale = df.scale + 2000
-#         # Find directions for inspector for select order and update map
-#         d.findStringPositions(Name)
-#         dic = d.seekLines()
-#         DirecttextElement = arcpy.mapping.ListLayoutElements(mxd, \
-#                          "TEXT_ELEMENT", "directions")[0]
-#         DirecttextElement.text = dic[(sequence_num - 1)]
-#         DirecttextElement.elementWidth = 3.25
-#         InspectTexttElement = arcpy.mapping.ListLayoutElements(mxd, \
-#                          "TEXT_ELEMENT", "inspection")[0]
-#         ordersCursor = arcpy.da.SearchCursor(ordersLayer, ["Name"])
-#         for row in ordersCursor:
-#             InspectTexttElement.text = row[0]
-#         page_name = os.path.join(outputfolder_temp, "{0}_{1}.pdf".format(Name,\
-#                                  sequence_num))
-#         # Export map and apped it to main route book pdf
-#         arcpy.mapping.ExportToPDF(mxd, page_name, "PAGE_LAYOUT")
-#         pdf.appendPages(page_name)
-#         sequence_num += 1
-#     pdf.saveAndClose()
-#     arcpy.Delete_management(outputfolder_temp)
-#     arcpy.AddMessage("\t{}'s Mapbook created.".format(Name))
-#
-#     # upload routes to Agol and publish
-#     arcpy.AddMessage("\tStarting upload of Route and Orders shapefiles...")
-#     upload_routes = VRPS.uploadPublish(Name, date, outputfolder, \
-#                     routesLayer, "Name = '{}'".format(Name), username, token)
-#     upload_orders = VRPS.uploadPublish(Name, date, outputfolder, \
-#                     ordersLayer, "RouteName = '{}'".format(Name), username, token)
-#     if upload_orders != None and upload_routes != []:
-#         VRPS.makeWebmap(Name, date, upload_routes, upload_orders, username, token)
-#     arcpy.AddMessage("\tFinsihed processing {}'s pdf and webmap.\n".format(Name))
-#
-#
-# # Upload PDF to ArcGIS Online and share them with the organization
-# arcpy.AddMessage("Starting PDF upload process...")
-# output_pdf_dict = {}
-# for routebook in routebookcollection:
-#     upload_pdf_dict = VRPS.uploadPDF(routebook, username, token)
-#     output_pdf_dict.update(upload_pdf_dict)
-# VRPS.sharePDFs(output_pdf_dict, username, token)
-#
-# # final cleanup
-# del d, inspector_row, routesCursor, mxd, df, vprLayer, ordersLayer
-# del routesLayer, depotsLayer
-
-# arcpy.AddMessage("End of Processing")
+arcpy.AddMessage("End of Processing")
