@@ -26,7 +26,7 @@ produce a user friendly interface for the researcher to follow.
 # Import system modules
 import arcpy, os
 import pandas as pd
-
+from arcpy import env
 
 def find_all_csv(workspace):
     prev_workspace = arcpy.env.workspace
@@ -37,39 +37,6 @@ def find_all_csv(workspace):
     arcpy.env.workspace = prev_workspace
     return csv
 
-
-# Setup AGOL access
-# hostname = "http://" + socket.getfqdn()
-#
-# try:
-#     token_params ={'username': username,
-#                    'password': password,
-#                    'referer': hostname,
-#                    'f':'json'}
-#     token_response= requests.post("https://www.arcgis.com/sharing/generateToken",\
-#                             params=token_params)
-#     token_status = json.loads(token_response.text)
-#     token = token_status['token']
-#     arcpy.AddMessage("\nToken generated for AGOL.")
-# except:
-#     tb = sys.exc_info()[2]
-#     tbinfo = traceback.format_tb(tb)[0]
-#     msg = "Traceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
-#     try:
-#         token_status
-#         if 'error' in token_status:
-#             code = token_status['error']['code']
-#             msg = token_status['error']['message']
-#             details = token_status['error']['details'][0]
-#             arcpy.AddError("Failed to generate token.")
-#             arcpy.AddError("Error {0}: {1} {2}".format(code, msg, details))
-#             print "Error {0}: {1} {2}".format(code, msg, details)
-#             sys.exit()
-#     except:
-#         arcpy.AddError("Failed to generate token.")
-#         arcpy.AddError(msg)
-#         print msg
-#     sys.exit()
 
 # Begin Script processing
 # Permafrost regression processing
@@ -92,13 +59,14 @@ shapefile = arcpy.GetParameterAsText(9)
 
 # Set workspace
 
-arcpy.env.workspace = Workspace
+env.workspace = Workspace
 
 # Set overwrite to TRUE
-arcpy.env.overwriteOutput = True
+env.overwriteOutput = True
 arcpy.gp.overwriteOutput = True
 
 try:
+    env.overwriteOutput = True
     arcpy.AddMessage("Creating spatially referenced csv files...")
     """ cbind coords to covaraites """
     covariates = pd.concat([permafrost, heatload, temp, slope, cti, texture, coords], axis=1)
@@ -109,83 +77,113 @@ try:
 
     arcpy.AddMessage("Converting to shapefile...")
     dir_string = os.path.join(Workspace, outputfolder)
-    shape_space = os.path.join(dir_string, "shapefiles")
+    shp_output_dir = os.path.join(dir_string, "shapefiles")
 
     files = find_all_csv(os.path.join(Workspace, outputfolder))
     for file in files:
         csv_input = dir_string + r"\{0}".format(file)
-        shp_output_dir = os.path.dirname(csv_input) + "\shapefiles"
         temp_layer = os.path.splitext(os.path.basename(csv_input))[0] # == "input"
 
+        # Get NAD 1983 Alaska Albers Spatial reference
+        prjfile = arcpy.SpatialReference(3338)
 
-        WGS84_PROJ = "GEOGCS['GCS_WGS_1984'," \
-                     "DATUM['D_WGS_1984',SPHEROID[" \
-                     "'WGS_1984',6378137.0,298.257223563]]," \
-                     "PRIMEM['Greenwich',0.0]," \
-                     "UNIT['Degree',0.0174532925199433]];IsHighPrecision"
-
-        arcpy.MakeXYEventLayer_management(csv_input, "long_site", "lat_site", temp_layer, WGS84_PROJ)
+        arcpy.MakeXYEventLayer_management(csv_input, "long_site", "lat_site", temp_layer, prjfile)
         # exports a feature to a directory as a shapefile.
+
+        # set covaraite shapefile feature class
+        fc = os.path.join(shp_output_dir, temp_layer) + ".shp"
+
+        # Delete covariate shapefile if exists
+        if arcpy.Exists(fc):
+            arcpy.Delete_management(fc)
 
         arcpy.FeatureClassToShapefile_conversion(temp_layer, shp_output_dir)
         arcpy.Delete_management(temp_layer) # clean up layer, for completeness
+
     arcpy.AddMessage("Shapefile conversion complete.")
+
+
 except arcpy.AddError("\tThere may be an issue with your input files."):
     arcpy.AddMessage("\pPlease check covariate csv.")
 
 try:
     arcpy.AddMessage("Starting Permafrost Analysis...")
-
     # Set geoprocessor object property to overwrite existing output, by default
     arcpy.gp.overwriteOutput = True
-    arcpy.env.workspace = r"C:\Users\jamatney\PycharmProjects\GIS540_final_project\cov_bind\shapefiles"
+    arcpy.env.workspace = os.path.join(Workspace, outputfolder) + "/shapefiles"
+
+    # Define spatial projection
+    infc = "covariates.shp"
+    # Get NAD 1983 Alaska Albers Spatial reference
+    prjfile = arcpy.SpatialReference(3338)
+    arcpy.DefineProjection_management(infc, prjfile)
+
+    # create projected outfile
+    input_feature = "covariates.shp"
+    output_feature_class = "covariates_proj.shp"
+    out_coordinate_system = arcpy.SpatialReference(3338)
+    arcpy.Project_management(input_feature, output_feature_class, out_coordinate_system)
+
     # # Join the permafrost feature class to the Covariate feature class
     # # Process: Spatial Join
     fieldMappings = arcpy.FieldMappings()
-    fieldMappings.addTable("Alaska.shp")
-    fieldMappings.addTable("covariates.shp")
+    fieldMappings.addTable("denali_proj.shp")
+    fieldMappings.addTable("covariates_proj_clip.shp")
 
     arcpy.AddMessage("\tPerforming Spatial Join Analysis on Permafrost Data...")
-    sj = arcpy.SpatialJoin_analysis("Alaska.shp", "covariates.shp", "AK_cov.shp",
+    sj = arcpy.SpatialJoin_analysis("denali_proj.shp", "covariates_proj_clip.shp", "spatial_join.shp",
                                     "JOIN_ONE_TO_MANY",
                                     "KEEP_ALL",
                                     fieldMappings,
                                     "INTERSECTS", "", "")
 
-
     # Delete extra fields to clean up the data
     # Process: Delete Field
     arcpy.AddMessage("\tDeleting Fields...")
-    arcpy.AddMessage("\tList Current Fields...")
-    layer_fields = arcpy.ListFields("AK_cov.shp")
+    arcpy.DeleteField_management("spatial_join.shp", "SP_ID;OBJECTID;NAME;STATE_NAME;STATE_FIPS;CNTY_FIPS;FIPS;POP2010;POP10_SQMI;POP2013;POP13_SQMI;WHITE;BLACK;AMERI_ES;ASIAN;HAWN_PI;HISPANIC;OTHER;MULT_RACE;MALES;FEMALES;AGE_UNDER5;AGE_5_9;AGE_10_14;AGE_15_19;AGE_20_24;AGE_25_34;AGE_35_44;AGE_45_54;AGE_55_64;AGE_65_74;AGE_75_84;AGE_85_UP;MED_AGE;MED_AGE_M;MED_AGE_F;HOUSEHOLDS;AVE_HH_SZ;HSEHLD_1_M;HSEHLD_1_F;MARHH_CHD;MARHH_NO_C;MHH_CHILD;FHH_CHILD;FAMILIES;AVE_FAM_SZ;HSE_UNITS;VACANT;OWNER_OCC;RENTER_OCC;NO_FARMS12;AVE_SIZE12;CROP_ACR12;AVE_SALE12;SQMI;Shape_Leng;Shape_Area;TARGET_FID;Join_Count;STATE_NAME;DRAWSEQ;STATE_FIPS;SUB_REGION;STATE_ABBR")
+    arcpy.AddMessage("\tListing Remaining Fields...")
+
+    layer_fields = arcpy.ListFields("spatial_join.shp")
     for field in layer_fields:
         print "{0} is a type of {1} with a length of {2}"\
             .format(field.name, field.type, field.length)
 
-    arcpy.AddMessage("\tDeleting Fields...")
-    arcpy.DeleteField_management("AK_cov.shp", "Join_Count;STATE_NAME;DRAWSEQ;STATE_FIPS;SUB_REGION;STATE_ABBR")
-    arcpy.AddMessage("\tList remaining Fields")
+    # Define spatial projection
+    infc = "spatial_join.shp"
+    # Get NAD 1983 Alaska Albers Spatial reference
+    prjfile = arcpy.SpatialReference(3338)
+    arcpy.DefineProjection_management(infc, prjfile)
+    sr = arcpy.Describe("spatial_join.shp").spatialReference
+    print sr.name
 
-    layer_fields = arcpy.ListFields("AK_cov.shp")
-    for field in layer_fields:
-        print "{0} is a type of {1} with a length of {2}"\
-            .format(field.name, field.type, field.length)
+    # create projected outfile
+    input_feature = "spatial_join.shp"
+    output_feature_class = "spatial_join_proj.shp"
+    out_coordinate_system = arcpy.SpatialReference(3338)
+    arcpy.Project_management(input_feature, output_feature_class, out_coordinate_system)
 
     # Create Spatial Weights Matrix for Calculations
     # Process: Generate Spatial Weights Matrix
-    arcpy.AddMessage("\tGenerating Spatial Weights Matrix...")
-    swm = arcpy.GenerateSpatialWeightsMatrix_stats("AK_cov.shp", "TARGET_FID", "AK_cov.swm", "K_NEAREST_NEIGHBORS")
+    arcpy.AddMessage("\tBuilding Spatial Weights Matrix...")
+    swm = arcpy.GenerateSpatialWeightsMatrix_stats("spatial_join_proj.shp", "JOIN_FID", "spatial_weights.swm", "K_NEAREST_NEIGHBORS")
+    #
+    arcpy.AddMessage("\tSpatial Weights Matrix generated...")
 
-    # Exploratory Regression Analysis for 911 Calls
+    # Exploratory Regression Analysis for permafrost
 
     arcpy.AddMessage("\tPerforming Exploratory Spatial Regression...")
-    er = arcpy.ExploratoryRegression_stats("BG_911Calls.shp",
-                                      "Calls",
-                                      "Pop;Jobs;LowEduc;Dst2UrbCen;Renters;Unemployed;Businesses;NotInLF; \
-                                ForgnBorn;AlcoholX;PopDensity;MedIncome;CollGrads;PerCollGrd; \
-                                PopFY;JobsFY;LowEducFY",
-                                      "BG_911Calls.swm", "BG_911Calls.txt", "",
-                                      "MAX_NUMBER_ONLY", "5", "1", "0.5", "0.05", "7.5", "0.1", "0.1")
+    er = arcpy.ExploratoryRegression_stats(Input_Features="spatial_join_proj.shp",
+                                      Dependent_Variable="permafrost",
+                                      Candidate_Explanatory_Variables="heatload;temp;slope;cti;texture",
+                                      Weights_Matrix_File="spatial_weights.swm",
+                                      Output_Report_File="results.txt",
+                                      Maximum_Number_of_Explanatory_Variables="5",
+                                      Minimum_Number_of_Explanatory_Variables="1",
+                                      Minimum_Acceptable_Adj_R_Squared="0.5",
+                                      Maximum_Coefficient_p_value_Cutoff="0.05",
+                                      Maximum_VIF_Value_Cutoff="7.5",
+                                      Minimum_Acceptable_Jarque_Bera_p_value="0.1",
+                                      Minimum_Acceptable_Spatial_Autocorrelation_p_value="0.1")
     arcpy.AddMessage("Regression Analysis Complete.")
 
 except arcpy.ExecuteError("An error occurred during processing:\n"):
