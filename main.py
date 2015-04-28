@@ -83,6 +83,15 @@ def define_and_project(infile, output_feature_class, spatial_reference_code):
     # Create projected outfile
     arcpy.Project_management(infile, output_feature_class, spatial_reference_code)
 
+
+def clip_features(inf, clip, out):
+    arcpy.AddMessage("\tClipping data to Denali county...")
+    # clip covariates
+    # Set local variables
+    # Execute Clip
+    arcpy.Clip_analysis(inf, clip, out)
+    arcpy.AddMessage("\tClip Executed, Leveraging for further analysis...")
+
 # Begin Script processing
 
 # User Parameters and variable setup
@@ -189,20 +198,15 @@ try:
     except:
         arcpy.GetMessages()
 
-    arcpy.AddMessage("\tClipping data to Denali county...")
-    # clip covariates with denali county
-    # Set local variables
-    in_features = "covariates_proj.shp"
-    clip_features = "denali.shp"
-    out_feature_class = "denali_covariates.shp"
+    # Perform Clip
+    inf_proj = "covariates_proj.shp"
+    denali_shp = "denali.shp"
+    out_clip = "denali_covariates.shp"
 
-    xy_tolerance = ""
+    clip_features(inf_proj, denali_shp, out_clip)
 
-    # Execute Clip
-    arcpy.Clip_analysis(in_features, clip_features, out_feature_class, xy_tolerance)
-    arcpy.AddMessage("\tClip Executed, Leveraging for further analysis...")
-    # # Join the permafrost feature class to the Covariate feature class
-    # # Process: Spatial Join
+    # Join the permafrost feature class to the Covariate feature class
+    # Process: Spatial Join
 
     fieldMappings = arcpy.FieldMappings()
     fieldMappings.addTable("denali.shp")
