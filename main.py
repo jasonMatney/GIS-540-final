@@ -168,17 +168,21 @@ try:
     try:
         infc = "covariates.shp"
         outfc = "covariates_proj.shp"
-        ro.r('if (!require("pacman")) install.packages("pacman")')
-        ro.r('pacman::p_load(sp, rgdal, raster)')
         ro.globalenv['dsn'] = arcpy.env.workspace
-        ro.r('ak_proj <- readOGR(dsn, "AK_proj")')
-        ro.r('covariates  <- readOGR(dsn,"covariates")')
-        ro.r('a  <- project(covariates@coords, proj4string(ak_proj))')
-        ro.r('b <- cbind(a, covariates@data[,1:6])')
-        ro.r('colnames(b) <- c("x","y","permafrost","heatload","temp","slope","cti","texture")')
-        ro.r('coordinates(b) <-~x+y')
-        ro.r('proj4string(b) <- proj4string(ak_proj)')
-        ro.r('ab <- spTransform(b,CRS(proj4string(ak_proj)))')
+        ro.r('''
+        if (!require("pacman")) install.packages("pacman")
+        pacman::p_load(sp, rgdal, raster)
+
+        ak_proj <- readOGR(dsn, "AK_proj")
+        covariates  <- readOGR(dsn,"covariates")
+        a  <- project(covariates@coords, proj4string(ak_proj))
+        b <- cbind(a, covariates@data[,1:6])
+        colnames(b) <- c("x","y","permafrost","heatload","temp","slope","cti","texture")
+        coordinates(b) <-~x+y
+        proj4string(b) <- proj4string(ak_proj)
+        ab <- spTransform(b,CRS(proj4string(ak_proj)))
+        ''')
+
         if arcpy.Exists(outfc):
                 arcpy.Delete_management(outfc)
         ro.r('writeOGR(b, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
