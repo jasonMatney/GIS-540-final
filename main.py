@@ -118,40 +118,6 @@ dir_string = os.path.join(Workspace, outputfolder)
 shp_output_dir = os.path.join(dir_string, "shapefiles")
 files = find_all_csv(dir_string)
 
-# # Setup AGOL access
-# hostname = "http://" + socket.getfqdn()
-#
-# try:
-#     token_params ={'username': username,
-#                    'password': password,
-#                    'referer': hostname,
-#                    'f':'json'}
-#     token_response= requests.post("https://www.arcgis.com/sharing/generateToken",\
-#                             params=token_params)
-#     token_status = json.loads(token_response.text)
-#     token = token_status['token']
-#     arcpy.AddMessage("\nToken generated for AGOL.")
-# except:
-#     tb = sys.exc_info()[2]
-#     tbinfo = traceback.format_tb(tb)[0]
-#     msg = "Traceback info:\n" + tbinfo + "\nError Info:\n" + str(sys.exc_info()[1])
-#     try:
-#         token_status
-#         if 'error' in token_status:
-#             code = token_status['error']['code']
-#             msg = token_status['error']['message']
-#             details = token_status['error']['details'][0]
-#             arcpy.AddError("Failed to generate token.")
-#             arcpy.AddError("Error {0}: {1} {2}".format(code, msg, details))
-#             print "Error {0}: {1} {2}".format(code, msg, details)
-#             sys.exit()
-#     except:
-#         arcpy.AddError("Failed to generate token.")
-#         arcpy.AddError(msg)
-#         print msg
-#     sys.exit()
-
-
 try:
     env.overwriteOutput = True
     arcpy.AddMessage("Creating spatially referenced csv files...")
@@ -174,46 +140,44 @@ try:
 
     arcpy.AddMessage("\tReprojecting data using R...")
     # Reprojection done in R
-    try:
-        infc = "covariates.shp"
-        outfc = "covariates_proj.shp"
-        ro.globalenv['dsn'] = arcpy.env.workspace
-        ro.r('''
-        if (!require("pacman")) install.packages("pacman")
-        pacman::p_load(sp, rgdal, raster)
 
-        ak_proj <- readOGR(dsn, "AK_proj")
-        covariates  <- readOGR(dsn,"covariates")
-        a  <- project(covariates@coords, proj4string(ak_proj))
-        b <- cbind(a, covariates@data[,1:6])
-        colnames(b) <- c("x","y","permafrost","heatload","temp","slope","cti","texture")
-        coordinates(b) <-~x+y
-        proj4string(b) <- proj4string(ak_proj)
-        ab <- spTransform(b,CRS(proj4string(ak_proj)))
-        ''')
+    infc = "covariates.shp"
+    outfc = "covariates_proj.shp"
+    ro.globalenv['dsn'] = arcpy.env.workspace
+    ro.r('''
+    if (!require("pacman")) install.packages("pacman")
+    pacman::p_load(sp, rgdal, raster)
 
-        if arcpy.Exists(outfc):
-                arcpy.Delete_management(outfc)
-        ro.r('writeOGR(b, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
-    except:
-        arcpy.GetMessages()
+    ak_proj <- readOGR(dsn, "AK_proj")
+    covariates  <- readOGR(dsn,"covariates")
+    a  <- project(covariates@coords, proj4string(ak_proj))
+    b <- cbind(a, covariates@data[,1:6])
+    colnames(b) <- c("x","y","permafrost","heatload","temp","slope","cti","texture")
+    coordinates(b) <-~x+y
+    proj4string(b) <- proj4string(ak_proj)
+    ab <- spTransform(b,CRS(proj4string(ak_proj)))
+    ''')
 
-    # Perform Clip
-    inf_proj = "covariates_proj.shp"
-    denali_shp = "denali.shp"
-    out_clip = "denali_covariates.shp"
+    if arcpy.Exists(outfc):
+            arcpy.Delete_management(outfc)
+    ro.r('writeOGR(b, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
 
-    clip_features(inf_proj, denali_shp, out_clip)
-
-    # Join the permafrost feature class to the Covariate feature class
-    # Process: Spatial Join
-
-    fieldMappings = arcpy.FieldMappings()
-    fieldMappings.addTable("denali.shp")
-    fieldMappings.addTable("denali_covariates.shp")
-
-except arcpy.AddMessage("Busted"):
+except arcpy.AddMessage("An error occurred during processing:\n"):
     arcpy.GetMessages()
+
+# Perform Clip
+inf_proj = "covariates_proj.shp"
+denali_shp = "denali.shp"
+out_clip = "denali_covariates.shp"
+
+clip_features(inf_proj, denali_shp, out_clip)
+
+# Join the permafrost feature class to the Covariate feature class
+# Process: Spatial Join
+
+fieldMappings = arcpy.FieldMappings()
+fieldMappings.addTable("denali.shp")
+fieldMappings.addTable("denali_covariates.shp")
 
 try:
     arcpy.AddMessage("\tPerforming Spatial Join Analysis on Permafrost Data...")
@@ -258,6 +222,7 @@ try:
         print "{0} is a type of {1} with a length of {2}"\
             .format(field.name, field.type, field.length)
 
+    # Define and project the spatial join feature class
     inf = "spatial_join.shp"
     outf = "spatial_join_proj.shp"
     prj = 3338
@@ -288,7 +253,6 @@ try:
 
 except arcpy.ExecuteError("An error occurred during processing:\n"):
     msgs = arcpy.GetMessages(2)
-    arcpy.AddError("An error occurred during processing:\n")
     arcpy.AddError(msgs)
     arcpy.AddError("\nP Check that inputs are formatted correctly.")
 
