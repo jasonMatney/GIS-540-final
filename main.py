@@ -41,12 +41,6 @@ import requests, socket, json
 from arcpy import env
 import rpy2.robjects as ro
 
-# # Perform Clip
-# inf_proj = "covariates_proj.shp"
-# feat_shp = "denali.shp"
-# cov_clip = "denali_covariates.shp"
-# clip_features(inf_proj, feat_shp, cov_clip)
-
 
 class SpatialJoin:
     def __init__(self, covariate_shp, feature_shp, outfile_shp, spatial_ref):
