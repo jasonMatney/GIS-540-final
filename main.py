@@ -36,16 +36,15 @@ for instance, if installed in C:, set Workspace to "C:\GIS540_project_jamatney"
 """
 # Import system modules
 import arcpy,os
-import pandas as pd
-import requests, socket, json
+#import pandas as pd
 from arcpy import env
-import rpy2.robjects as ro
+#import rpy2.robjects as ro
 
 
 class SpatialJoin:
-    def __init__(self, covariate_shp, feature_shp, outfile_shp, spatial_ref):
-        self.covariate_shp = covariate_shp
+    def __init__(self, feature_shp, covariate_shp, outfile_shp, spatial_ref):
         self.feature_shp = feature_shp
+        self.covariate_shp = covariate_shp
         self.outfile_shp = outfile_shp
         self.spatial_ref = spatial_ref
 
@@ -53,23 +52,20 @@ class SpatialJoin:
         fieldMappings = arcpy.FieldMappings()
         fieldMappings.addTable(self.feature_shp)
         fieldMappings.addTable(self.covariate_shp)
+
         arcpy.AddMessage("\tPerforming Spatial Join Analysis on Permafrost Data...")
-        arcpy.SpatialJoin_analysis(target_features=self.covariate_shp,
-                                   join_features=self.feature_shp,
+        arcpy.SpatialJoin_analysis(target_features=self.feature_shp,
+                                   join_features=self.covariate_shp,
                                    out_feature_class=self.outfile_shp,
                                    join_operation="JOIN_ONE_TO_MANY",
-                                   join_type="KEEP_ALL",
                                    field_mapping=fieldMappings,
-                                   match_option="INTERSECTS",
-                                   search_radius="",
-                                   distance_field_name="")
+                                   match_option="COMPLETELY_CONTAINS")
 
         arcpy.AddMessage("\tOutput is 'spatial_join.shp'...")
         # Delete extra fields to clean up the data
         # Process: Delete Field
         arcpy.AddMessage("\tDeleting Fields...")
-        arcpy.DeleteField_management(self.outfile_shp, "SP_ID;OBJECTID;"
-                                                         "NAME;STATE_NAME;"
+        arcpy.DeleteField_management(self.outfile_shp,   "NAME;STATE_NAME;"
                                                          "STATE_FIPS;CNTY_FIPS;"
                                                          "FIPS;POP2010;POP10_SQMI;"
                                                          "POP2013;POP13_SQMI;WHITE;"
@@ -146,22 +142,21 @@ def clip_features(inf, clip, out):
     arcpy.Clip_analysis(inf, clip, out)
     arcpy.AddMessage("\tClip Executed, Leveraging for further analysis...")
 
-# Begin Script processing
 
 # User Parameters and variable setup
 Workspace = arcpy.GetParameterAsText(0)
-coords = pd.read_csv(arcpy.GetParameterAsText(1))
-permafrost = pd.read_csv(arcpy.GetParameterAsText(2))
-heatload = pd.read_csv(arcpy.GetParameterAsText(3))
-temp = pd.read_csv(arcpy.GetParameterAsText(4))
-slope = pd.read_csv(arcpy.GetParameterAsText(5))
-cti = pd.read_csv(arcpy.GetParameterAsText(6))
-texture = pd.read_csv(arcpy.GetParameterAsText(7))
+# coords = pd.read_csv(arcpy.GetParameterAsText(1))
+# permafrost = pd.read_csv(arcpy.GetParameterAsText(2))
+# heatload = pd.read_csv(arcpy.GetParameterAsText(3))
+# temp = pd.read_csv(arcpy.GetParameterAsText(4))
+# slope = pd.read_csv(arcpy.GetParameterAsText(5))
+# cti = pd.read_csv(arcpy.GetParameterAsText(6))
+# texture = pd.read_csv(arcpy.GetParameterAsText(7))
 outputfolder = arcpy.GetParameterAsText(8)
 denali_shp = arcpy.GetParameterAsText(9)
 projcode = int(arcpy.GetParameterAsText(10))
 outfc = str(arcpy.GetParameterAsText(11))
-base = os.path.basename(denali_shp)[:-4] + "_covariates.shp"
+denali_cov = os.path.basename(denali_shp)[:-4] + "_covariates.shp"
 
 # Environmental Variables
 arcpy.env.overwriteOutput = True
@@ -173,60 +168,73 @@ dir_string = os.path.join(Workspace, outputfolder)
 shp_output_dir = os.path.join(dir_string, "shapefiles")
 files = find_all_csv(dir_string)
 
-try:
-    env.overwriteOutput = True
-    arcpy.AddMessage("Creating spatially referenced csv files...")
-    """ cbind coords to covaraites """
-    covariates = pd.concat([permafrost, heatload, temp, slope, cti, texture, coords], axis=1)
+#############
+# Data Prep #
+#############
+#
+# try:
+#     env.overwriteOutput = True
+#     arcpy.AddMessage("Creating spatially referenced csv files...")
+#     """ cbind coords to covaraites """
+#     covariates = pd.concat([permafrost, heatload, temp, slope, cti, texture, coords], axis=1)
+#
+#     # Write to csv
+#     covariates.to_csv(os.path.join(outputfolder, "covariates.csv"), index=False)
+#
+#     shapefile_conversion(files, dir_string, shp_output_dir, projcode)
+#
+# except arcpy.AddError("\tThere may be an issue with your input files."):
+#     arcpy.AddMessage("\pPlease check covariate csv.")
+#
+# try:
+#     arcpy.AddMessage("Starting Permafrost Analysis...")
+#     # Set geoprocessor object property to overwrite existing output, by default
+#     arcpy.gp.overwriteOutput = True
+#     arcpy.env.workspace = shp_output_dir
+#
+#     arcpy.AddMessage("\tReprojecting data using R...")
+#
+#     # Reprojection done in R
+#     ro.globalenv['dsn'] = arcpy.env.workspace
+#     ro.r('''
+#     if (!require("pacman")) install.packages("pacman")
+#     pacman::p_load(sp, rgdal, raster)
+#     ak_proj <- readOGR(dsn, "AK_proj")
+#     covariates  <- readOGR(dsn,"covariates")
+#     a  <- project(covariates@coords, proj4string(ak_proj))
+#     b <- cbind(a, covariates@data[,1:6])
+#     colnames(b) <- c("x","y","permafrost","heatload","temp","slope","cti","texture")
+#     coordinates(b) <-~x+y
+#     proj4string(b) <- proj4string(ak_proj)
+#     ab <- spTransform(b,CRS(proj4string(ak_proj)))
+#     ''')
+#
+#     if arcpy.Exists(outfc):
+#             arcpy.Delete_management(outfc)
+#     ro.r('writeOGR(b, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
+#
+# except arcpy.AddMessage("An error occurred during processing:\n"):
+#     arcpy.GetMessages()
 
-    # Write to csv
-    covariates.to_csv(os.path.join(outputfolder, "covariates.csv"), index=False)
-
-    shapefile_conversion(files, dir_string, shp_output_dir, projcode)
-
-except arcpy.AddError("\tThere may be an issue with your input files."):
-    arcpy.AddMessage("\pPlease check covariate csv.")
-
-try:
-    arcpy.AddMessage("Starting Permafrost Analysis...")
-    # Set geoprocessor object property to overwrite existing output, by default
-    arcpy.gp.overwriteOutput = True
-    arcpy.env.workspace = shp_output_dir
-
-    arcpy.AddMessage("\tReprojecting data using R...")
-
-    # Reprojection done in R
-    ro.globalenv['dsn'] = arcpy.env.workspace
-    ro.r('''
-    if (!require("pacman")) install.packages("pacman")
-    pacman::p_load(sp, rgdal, raster)
-    ak_proj <- readOGR(dsn, "AK_proj")
-    covariates  <- readOGR(dsn,"covariates")
-    a  <- project(covariates@coords, proj4string(ak_proj))
-    b <- cbind(a, covariates@data[,1:6])
-    colnames(b) <- c("x","y","permafrost","heatload","temp","slope","cti","texture")
-    coordinates(b) <-~x+y
-    proj4string(b) <- proj4string(ak_proj)
-    ab <- spTransform(b,CRS(proj4string(ak_proj)))
-    ''')
-
-    if arcpy.Exists(outfc):
-            arcpy.Delete_management(outfc)
-    ro.r('writeOGR(b, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
-
-except arcpy.AddMessage("An error occurred during processing:\n"):
-    arcpy.GetMessages()
-
-# Hardcode generic sptial join file names
+####################
+# Spatial Analysis #
+####################
+arcpy.env.workspace = shp_output_dir
+# Hardcode generic spatial join file names
+denali_shp = os.path.basename(denali_shp)
+print denali_shp
+print outfc
+print denali_cov
 join_file = "spatial_join.shp"
 join_proj_file = "spatial_join_proj.shp"
 
-# perform Clip
-clip_features(outfc, denali_shp, base)
+# Perform Clip
+clip_features(outfc, denali_shp, denali_cov)
 
 # Join the permafrost feature class to the covariate feature class
 # Process: Spatial Join
-myJoin = SpatialJoin(base, denali_shp, join_file, projcode)
+
+myJoin = SpatialJoin(denali_shp, denali_cov, join_file, projcode)
 myJoin.spatial_join()
 myJoin.define_and_project(join_proj_file)
 
@@ -241,7 +249,8 @@ try:
     arcpy.AddMessage("\tPerforming Exploratory Spatial Regression...")
     er = arcpy.ExploratoryRegression_stats(Input_Features="spatial_join_proj.shp",
                                            Dependent_Variable="permafrost",
-                                           Candidate_Explanatory_Variables="heatload;temp;slope;cti;texture",
+                                           Candidate_Explanatory_Variables=\
+                                           "heatload;temp;slope;cti;texture",
                                            Weights_Matrix_File="spatial_weights.swm",
                                            Output_Report_File="results.txt",
                                            Maximum_Number_of_Explanatory_Variables="5",
