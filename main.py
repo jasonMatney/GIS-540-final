@@ -41,6 +41,78 @@ import requests, socket, json
 from arcpy import env
 import rpy2.robjects as ro
 
+# # Perform Clip
+# inf_proj = "covariates_proj.shp"
+# feat_shp = "denali.shp"
+# cov_clip = "denali_covariates.shp"
+# clip_features(inf_proj, feat_shp, cov_clip)
+
+
+class SpatialJoin:
+    def __init__(self, covariate_shp, feature_shp, outfile_shp, spatial_ref):
+        self.covariate_shp = covariate_shp
+        self.feature_shp = feature_shp
+        self.outfile_shp = outfile_shp
+        self.spatial_ref = spatial_ref
+
+    def spatial_join(self):
+        fieldMappings = arcpy.FieldMappings()
+        fieldMappings.addTable(self.feature_shp)
+        fieldMappings.addTable(self.covariate_shp)
+        arcpy.AddMessage("\tPerforming Spatial Join Analysis on Permafrost Data...")
+        arcpy.SpatialJoin_analysis(target_features=self.covariate_shp,
+                                   join_features=self.feature_shp,
+                                   out_feature_class=self.outfile_shp,
+                                   join_operation="JOIN_ONE_TO_MANY",
+                                   join_type="KEEP_ALL",
+                                   field_mapping=fieldMappings,
+                                   match_option="INTERSECTS",
+                                   search_radius="",
+                                   distance_field_name="")
+
+        arcpy.AddMessage("\tOutput is 'spatial_join.shp'...")
+        # Delete extra fields to clean up the data
+        # Process: Delete Field
+        arcpy.AddMessage("\tDeleting Fields...")
+        arcpy.DeleteField_management(self.outfile_shp, "SP_ID;OBJECTID;"
+                                                         "NAME;STATE_NAME;"
+                                                         "STATE_FIPS;CNTY_FIPS;"
+                                                         "FIPS;POP2010;POP10_SQMI;"
+                                                         "POP2013;POP13_SQMI;WHITE;"
+                                                         "BLACK;AMERI_ES;ASIAN;HAWN_PI;"
+                                                         "HISPANIC;OTHER;MULT_RACE;MALES;"
+                                                         "FEMALES;AGE_UNDER5;AGE_5_9;"
+                                                         "AGE_10_14;AGE_15_19;AGE_20_24;"
+                                                         "AGE_25_34;AGE_35_44;AGE_45_54;"
+                                                         "AGE_55_64;AGE_65_74;AGE_75_84;"
+                                                         "AGE_85_UP;MED_AGE;MED_AGE_M;"
+                                                         "MED_AGE_F;HOUSEHOLDS;AVE_HH_SZ;"
+                                                         "HSEHLD_1_M;HSEHLD_1_F;MARHH_CHD;"
+                                                         "MARHH_NO_C;MHH_CHILD;FHH_CHILD;"
+                                                         "FAMILIES;AVE_FAM_SZ;HSE_UNITS;"
+                                                         "VACANT;OWNER_OCC;RENTER_OCC;NO_FARMS12;"
+                                                         "AVE_SIZE12;CROP_ACR12;AVE_SALE12;"
+                                                         "SQMI;Shape_Leng;Shape_Area;"
+                                                         "Join_Count;STATE_NAME;DRAWSEQ;STATE_FIPS;"
+                                                         "SUB_REGION;STATE_ABBR")
+        arcpy.AddMessage("\tListing Remaining Fields...")
+
+        layer_fields = arcpy.ListFields(self.outfile_shp)
+        for field in layer_fields:
+            print "{0} is a type of {1} with a length of {2}"\
+                .format(field.name, field.type, field.length)
+
+    def define_and_project(self, output_feature_class):
+        """Define spatial projection and create projected outfile"""
+        prjfile = arcpy.SpatialReference(self.spatial_ref)
+        arcpy.DefineProjection_management(self.outfile_shp, prjfile)
+        sr = arcpy.Describe(self.outfile_shp).spatialReference
+
+        print "Your spatial reference code corresponds to: {0}".format(sr.name)
+
+        # Create projected outfile
+        arcpy.Project_management(self.outfile_shp, output_feature_class, self.spatial_ref)
+
 
 def find_all_csv(workspace):
     prev_workspace = arcpy.env.workspace
@@ -72,18 +144,6 @@ def shapefile_conversion(file_list, csv_location, output_location, spatial_refer
         arcpy.AddMessage("Shapefile conversion complete.")
 
 
-def define_and_project(infile, output_feature_class, spatial_reference_code):
-    """Define spatial projection and create projected outfile"""
-    prjfile = arcpy.SpatialReference(spatial_reference_code)
-    arcpy.DefineProjection_management(infile, prjfile)
-    sr = arcpy.Describe(infile).spatialReference
-
-    print "Your spatial reference code corresponds to: {0}".format(sr.name)
-
-    # Create projected outfile
-    arcpy.Project_management(infile, output_feature_class, spatial_reference_code)
-
-
 def clip_features(inf, clip, out):
     arcpy.AddMessage("\tClipping data to Denali county...")
     # clip covariates
@@ -104,9 +164,10 @@ slope = pd.read_csv(arcpy.GetParameterAsText(5))
 cti = pd.read_csv(arcpy.GetParameterAsText(6))
 texture = pd.read_csv(arcpy.GetParameterAsText(7))
 outputfolder = arcpy.GetParameterAsText(8)
-shapefile = arcpy.GetParameterAsText(9)
-#username = arcpy.GetParameterAsText(10)
-#password = arcpy.GetParameterAsText(11)
+denali_shp = arcpy.GetParameterAsText(9)
+projcode = int(arcpy.GetParameterAsText(10))
+outfc = str(arcpy.GetParameterAsText(11))
+base = os.path.basename(denali_shp)[:-4] + "_covariates.shp"
 
 # Environmental Variables
 arcpy.env.overwriteOutput = True
@@ -127,7 +188,7 @@ try:
     # Write to csv
     covariates.to_csv(os.path.join(outputfolder, "covariates.csv"), index=False)
 
-    shapefile_conversion(files, dir_string, shp_output_dir, 3338)
+    shapefile_conversion(files, dir_string, shp_output_dir, projcode)
 
 except arcpy.AddError("\tThere may be an issue with your input files."):
     arcpy.AddMessage("\pPlease check covariate csv.")
@@ -139,15 +200,12 @@ try:
     arcpy.env.workspace = shp_output_dir
 
     arcpy.AddMessage("\tReprojecting data using R...")
-    # Reprojection done in R
 
-    infc = "covariates.shp"
-    outfc = "covariates_proj.shp"
+    # Reprojection done in R
     ro.globalenv['dsn'] = arcpy.env.workspace
     ro.r('''
     if (!require("pacman")) install.packages("pacman")
     pacman::p_load(sp, rgdal, raster)
-
     ak_proj <- readOGR(dsn, "AK_proj")
     covariates  <- readOGR(dsn,"covariates")
     a  <- project(covariates@coords, proj4string(ak_proj))
@@ -165,90 +223,38 @@ try:
 except arcpy.AddMessage("An error occurred during processing:\n"):
     arcpy.GetMessages()
 
-# Perform Clip
-inf_proj = "covariates_proj.shp"
-denali_shp = "denali.shp"
-out_clip = "denali_covariates.shp"
+# Hardcode generic sptial join file names
+join_file = "spatial_join.shp"
+join_proj_file = "spatial_join_proj.shp"
 
-clip_features(inf_proj, denali_shp, out_clip)
+# perform Clip
+clip_features(outfc, denali_shp, base)
 
-# Join the permafrost feature class to the Covariate feature class
+# Join the permafrost feature class to the covariate feature class
 # Process: Spatial Join
-
-fieldMappings = arcpy.FieldMappings()
-fieldMappings.addTable("denali.shp")
-fieldMappings.addTable("denali_covariates.shp")
+myJoin = SpatialJoin(base, denali_shp, join_file, projcode)
+myJoin.spatial_join()
+myJoin.define_and_project(join_proj_file)
 
 try:
-    arcpy.AddMessage("\tPerforming Spatial Join Analysis on Permafrost Data...")
-    sj = arcpy.SpatialJoin_analysis(target_features="denali_covariates.shp",
-                                    join_features="denali.shp",
-                                    out_feature_class="spatial_join.shp",
-                                    join_operation="JOIN_ONE_TO_MANY",
-                                    join_type="KEEP_ALL",
-                                    field_mapping=fieldMappings,
-                                    match_option="INTERSECTS",
-                                    search_radius="",
-                                    distance_field_name="")
-
-    # Delete extra fields to clean up the data
-    # Process: Delete Field
-    arcpy.AddMessage("\tDeleting Fields...")
-    arcpy.DeleteField_management("spatial_join.shp", "SP_ID;OBJECTID;"
-                                                     "NAME;STATE_NAME;"
-                                                     "STATE_FIPS;CNTY_FIPS;"
-                                                     "FIPS;POP2010;POP10_SQMI;"
-                                                     "POP2013;POP13_SQMI;WHITE;"
-                                                     "BLACK;AMERI_ES;ASIAN;HAWN_PI;"
-                                                     "HISPANIC;OTHER;MULT_RACE;MALES;"
-                                                     "FEMALES;AGE_UNDER5;AGE_5_9;"
-                                                     "AGE_10_14;AGE_15_19;AGE_20_24;"
-                                                     "AGE_25_34;AGE_35_44;AGE_45_54;"
-                                                     "AGE_55_64;AGE_65_74;AGE_75_84;"
-                                                     "AGE_85_UP;MED_AGE;MED_AGE_M;"
-                                                     "MED_AGE_F;HOUSEHOLDS;AVE_HH_SZ;"
-                                                     "HSEHLD_1_M;HSEHLD_1_F;MARHH_CHD;"
-                                                     "MARHH_NO_C;MHH_CHILD;FHH_CHILD;"
-                                                     "FAMILIES;AVE_FAM_SZ;HSE_UNITS;"
-                                                     "VACANT;OWNER_OCC;RENTER_OCC;NO_FARMS12;"
-                                                     "AVE_SIZE12;CROP_ACR12;AVE_SALE12;"
-                                                     "SQMI;Shape_Leng;Shape_Area;"
-                                                     "Join_Count;STATE_NAME;DRAWSEQ;STATE_FIPS;"
-                                                     "SUB_REGION;STATE_ABBR")
-    arcpy.AddMessage("\tListing Remaining Fields...")
-
-    layer_fields = arcpy.ListFields("spatial_join.shp")
-    for field in layer_fields:
-        print "{0} is a type of {1} with a length of {2}"\
-            .format(field.name, field.type, field.length)
-
-    # Define and project the spatial join feature class
-    inf = "spatial_join.shp"
-    outf = "spatial_join_proj.shp"
-    prj = 3338
-    define_and_project(inf, outf, prj)
-
     # Create Spatial Weights Matrix for Calculations
     # Process: Generate Spatial Weights Matrix
     arcpy.AddMessage("\tBuilding Spatial Weights Matrix...")
-    #swm = arcpy.GenerateSpatialWeightsMatrix_stats("spatial_join_proj.shp", "JOIN_FID", "spatial_weights.swm", "K_NEAREST_NEIGHBORS")
-    #
+    swm = arcpy.GenerateSpatialWeightsMatrix_stats("spatial_join_proj.shp", "JOIN_FID", "spatial_weights.swm", "K_NEAREST_NEIGHBORS")
     arcpy.AddMessage("\tSpatial Weights Matrix generated...")
 
     # Exploratory Regression Analysis for permafrost
-
     arcpy.AddMessage("\tPerforming Exploratory Spatial Regression...")
-
-    # er = arcpy.ExploratoryRegression_stats(Input_Features="spatial_join_proj.shp",
-    #                                        Dependent_Variable="permafrost",
-    #                                        Candidate_Explanatory_Variables="heatload;temp;slope;cti;texture",
-    #                                        Weights_Matrix_File="spatial_weights.swm",
-    #                                        Output_Report_File="results.txt",
-    #                                        Maximum_Number_of_Explanatory_Variables="5",
-    #                                        Minimum_Number_of_Explanatory_Variables="1",
-    #                                        Minimum_Acceptable_Adj_R_Squared="0.3",
-    #                                        Maximum_Coefficient_p_value_Cutoff="0.10",
-    #                                        Maximum_VIF_Value_Cutoff="7.5")
+    er = arcpy.ExploratoryRegression_stats(Input_Features="spatial_join_proj.shp",
+                                           Dependent_Variable="permafrost",
+                                           Candidate_Explanatory_Variables="heatload;temp;slope;cti;texture",
+                                           Weights_Matrix_File="spatial_weights.swm",
+                                           Output_Report_File="results.txt",
+                                           Maximum_Number_of_Explanatory_Variables="5",
+                                           Minimum_Number_of_Explanatory_Variables="1",
+                                           Minimum_Acceptable_Adj_R_Squared="0.3",
+                                           Maximum_Coefficient_p_value_Cutoff="0.10",
+                                           Maximum_VIF_Value_Cutoff="7.5")
     arcpy.AddMessage("Regression Analysis Complete.")
 
 except arcpy.ExecuteError("An error occurred during processing:\n"):
