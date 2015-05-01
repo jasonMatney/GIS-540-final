@@ -278,26 +278,28 @@ try:
     # Create Spatial Weights Matrix for Calculations
     # Process: Generate Spatial Weights Matrix
     arcpy.AddMessage("\tBuilding Spatial Weights Matrix...")
-    swm = arcpy.GenerateSpatialWeightsMatrix_stats(Input_Feature_Class="spatial_join_proj.shp",
-                                                   Unique_ID_Field="JOIN_FID",
-                                                   Output_Spatial_Weights_Matrix_File="spatial_weights.swm",
-                                                   Conceptualization_of_Spatial_Relationships="K_NEAREST_NEIGHBORS")
+    # swm = arcpy.GenerateSpatialWeightsMatrix_stats(Input_Feature_Class="spatial_join_proj.shp",
+    #                                                Unique_ID_Field="JOIN_FID",
+    #                                                Output_Spatial_Weights_Matrix_File="spatial_weights.swm",
+    #                                                Conceptualization_of_Spatial_Relationships="K_NEAREST_NEIGHBORS")
     arcpy.AddMessage("\tSpatial Weights Matrix generated...")
 
     # Exploratory Regression Analysis for permafrost
     arcpy.AddMessage("\tPerforming Exploratory Spatial Regression...")
-    er = arcpy.ExploratoryRegression_stats(Input_Features="spatial_join_proj.shp",
-                                           Dependent_Variable="permafrost",
-                                           Candidate_Explanatory_Variables=\
-                                           "heatload;temp;slope;cti;texture",
-                                           Weights_Matrix_File="spatial_weights.swm",
-                                           Output_Report_File="results.txt",
-                                           Maximum_Number_of_Explanatory_Variables="5",
-                                           Minimum_Number_of_Explanatory_Variables="1",
-                                           Minimum_Acceptable_Adj_R_Squared="0.3",
-                                           Maximum_Coefficient_p_value_Cutoff="0.10",
-                                           Maximum_VIF_Value_Cutoff="7.5")
+    # er = arcpy.ExploratoryRegression_stats(Input_Features="spatial_join_proj.shp",
+    #                                        Dependent_Variable="permafrost",
+    #                                        Candidate_Explanatory_Variables=\
+    #                                        "heatload;temp;slope;cti;texture",
+    #                                        Weights_Matrix_File="spatial_weights.swm",
+    #                                        Output_Report_File="results.txt",
+    #                                        Maximum_Number_of_Explanatory_Variables="5",
+    #                                        Minimum_Number_of_Explanatory_Variables="1",
+    #                                        Minimum_Acceptable_Adj_R_Squared="0.3",
+    #                                        Maximum_Coefficient_p_value_Cutoff="0.10",
+    #                                        Maximum_VIF_Value_Cutoff="7.5")
     # Move results.txt to data folder
+    if arcpy.Exists(os.path.join(dir_string,"regression_results\\results.txt")):
+        arcpy.Delete_management(os.path.join(dir_string,"regression_results\\results.txt"))
     arcpy.Copy_management("results.txt", os.path.join(dir_string,"regression_results\\results.txt"))
     arcpy.AddMessage("Regression Analysis Complete.")
 
