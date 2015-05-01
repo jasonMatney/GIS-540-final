@@ -39,7 +39,7 @@ import arcpy, os
 import pandas as pd
 from arcpy import env
 import rpy2.robjects as ro
-
+import shutil
 
 class SpatialJoin:
     def __init__(self, feature_shp, covariate_shp, outfile_shp, spatial_ref):
@@ -298,9 +298,12 @@ try:
     #                                        Maximum_Coefficient_p_value_Cutoff="0.10",
     #                                        Maximum_VIF_Value_Cutoff="7.5")
     # Move results.txt to data folder
-    if arcpy.Exists(os.path.join(dir_string,"regression_results\\results.txt")):
-        arcpy.Delete_management(os.path.join(dir_string,"regression_results\\results.txt"))
-    arcpy.Copy_management("results.txt", os.path.join(dir_string,"regression_results\\results.txt"))
+    if arcpy.Exists( os.path.join(shp_output_dir,"results.txt")):
+        shutil.move( os.path.join(shp_output_dir,"results.txt"), os.path.join(dir_string,"regression_results\\results.txt"))
+
+    if arcpy.Exists( os.path.join(shp_output_dir,"results.txt.xml")):
+        shutil.move( os.path.join(shp_output_dir,"results.txt.xml"), os.path.join(dir_string,"regression_results\\results.txt.xml"))
+
     arcpy.AddMessage("Regression Analysis Complete.")
 
 except arcpy.ExecuteError("An error occurred during processing:\n"):
