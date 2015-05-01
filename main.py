@@ -299,10 +299,12 @@ try:
     #                                        Maximum_VIF_Value_Cutoff="7.5")
     # Move results.txt to data folder
     if arcpy.Exists( os.path.join(shp_output_dir,"results.txt")):
-        shutil.move( os.path.join(shp_output_dir,"results.txt"), os.path.join(dir_string,"regression_results\\results.txt"))
+        shutil.move( os.path.join(shp_output_dir,"results.txt"), 
+                     os.path.join(dir_string,"regression_results\\results.txt"))
 
     if arcpy.Exists( os.path.join(shp_output_dir,"results.txt.xml")):
-        shutil.move( os.path.join(shp_output_dir,"results.txt.xml"), os.path.join(dir_string,"regression_results\\results.txt.xml"))
+        shutil.move( os.path.join(shp_output_dir,"results.txt.xml"), 
+                     os.path.join(dir_string,"regression_results\\results.txt.xml"))
 
     arcpy.AddMessage("Regression Analysis Complete.")
 
