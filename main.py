@@ -1,41 +1,41 @@
-'''
+"""
 Title: Regression Analysis of Spatially Indexed Permafrost Data.
 Author: Jason Matney - jamatney
 Class: GIS 540 GIS Programming
 Created: 4/15/2015
-Updated: 4/24/2015
-Version: 1.2
+Updated: 4/30/2015
+
 Description: A exploratory data analysis and subsequent regression execution is used
-to estimate the binomial presence or absence of permafrost within a region of the
-Alaskan Discontinuous Zone. This Geo processing solution will incorporate geo referenced
+to estimate the prowess of predictive variables behind binomial presence or absence of permafrost
+within a region of the Alaskan Discontinuous Zone.
+This Geo processing solution will incorporate geo referenced
 data from the USGS data sets of interest. Four previously derived covariance
 will be leveraged for used as predictor variables.
-The output in ArcGIS Desktop might be easy for a GIS Analyst to read
-and understand, but the non-GIS users, such as drivers, need a simplified
-version of the information to do their part. The goal of this tool is to
-demonstrate how to generate PDF reports with maps and directions for a Regression
-analysis. This solution also takes advantage of ArcGIS Online to store the PDFs
-as well as the routes as feature services to use within web maps. The permafrost predictions
-can be viewed by analysts in phone applications such as
-ArcGIS Online App to view potential research sites and stay on track of Climate Change^TM.
-The point is to simplify the process of doing a Regression Analysis and to
-produce a user friendly interface for the researcher to follow.
-'''
 
+The goal of this tool is to demonstrate how to generate mxd reports
+with maps for a Regression analysis.
+
+Instructions
+1) Default values: Alter the path to suit your setup.
+"C:\path\to\GIS540_project_jamatney"
+"data\MegaAlaska\covariates\coords.csv"
+"data\MegaAlaska\covariates\permafrost.csv"
+"data\MegaAlaska\covariates\heatload.csv"
+"data\MegaAlaska\covariates\temp.csv"
+"data\MegaAlaska\covariates\slope.csv"
+"data\MegaAlaska\covariates\cti.csv"
+"data\MegaAlaska\covariates\texture.csv"
+"data"
+"yukon_proj.shp"
+"3338"
+"covariates_proj.shp"
+"project.mxd"
+2) When R prompts you to use a personal directory, select Yes,
+then select a CRAN mirror nearest to you (USA-MD works well)
 """
-instructions
-1) Use computer where User has admin access
-2) install pip using this script - https://bootstrap.pypa.io/get-pip.py
-3) via command prompt - pip install pandas
-4) via command prompt - pip install rpy2
-5) When running script, set Workspace to path\to\GIS540_project_jamatney
-for instance, if installed in C:, set Workspace to "C:\GIS540_project_jamatney"
-6) set covariate values to "MegaAlaska\covariates\covariate.csv"
-7) set output folder to "output"
-8) set shapefile to "states\AK_proj.shp"
-"""
+
 # Import system modules
-import arcpy,os
+import arcpy, os
 import pandas as pd
 from arcpy import env
 import rpy2.robjects as ro
@@ -136,14 +136,44 @@ def shapefile_conversion(file_list, csv_location, output_location, spatial_refer
 
 def clip_features(inf, clip, out):
     arcpy.AddMessage("\tClipping data to Yukon Counties...")
-    
+
     # Execute Clip
     arcpy.Clip_analysis(inf, clip, out)
     arcpy.AddMessage("\tClip Executed, Leveraging for further analysis...")
 
 
+def make_map():
+    #Make a Map Document
+    try:
+        mapList = arcpy.ListFiles("*.mxd")
+        mxd_path = os.path.join(shp_output_dir, mapList[0])
+
+        mxd = arcpy.mapping.MapDocument(mxd_path)
+        data_frames = arcpy.mapping.ListDataFrames(mxd)
+        data_frame = data_frames[0]
+        fcs = arcpy.ListFeatureClasses()
+
+        for f in fcs:
+            out_layer = f[:-4]
+            out_layer_file = out_layer + ".lyr"
+            arcpy.MakeFeatureLayer_management(f, out_layer)
+            arcpy.SaveToLayerFile_management(out_layer, out_layer_file)
+            layer_object = arcpy.mapping.Layer(f)
+            arcpy.mapping.AddLayer(data_frame, layer_object)
+
+        arcpy.RefreshActiveView()
+        arcpy.RefreshTOC()
+        project_map = map_document[:-4] + "Preview.mxd"
+        mxd.saveACopy(os.path.join(dir_string, project_map))
+        os.startfile(os.path.join(dir_string, project_map))
+        del mxd
+    except arcpy.AddMessage("\tPlease check inputs"):
+        arcpy.GetMessages()
+
 # User Parameters and variable setup
 Workspace = arcpy.GetParameterAsText(0)
+
+# load covariates
 coords = pd.read_csv(arcpy.GetParameterAsText(1))
 permafrost = pd.read_csv(arcpy.GetParameterAsText(2))
 heatload = pd.read_csv(arcpy.GetParameterAsText(3))
@@ -151,35 +181,43 @@ temp = pd.read_csv(arcpy.GetParameterAsText(4))
 slope = pd.read_csv(arcpy.GetParameterAsText(5))
 cti = pd.read_csv(arcpy.GetParameterAsText(6))
 texture = pd.read_csv(arcpy.GetParameterAsText(7))
+
+# set output folders
 outputfolder = arcpy.GetParameterAsText(8)
 yukon_shp = arcpy.GetParameterAsText(9)
 projcode = int(arcpy.GetParameterAsText(10))
-outfc = str(arcpy.GetParameterAsText(11))
+projected_covariates = str(arcpy.GetParameterAsText(11))
+map_document = arcpy.GetParameterAsText(12)
 yukon_cov = os.path.basename(yukon_shp)[:-4] + "_covariates.shp"
 
 # Environmental Variables
+arcpy.env.workspace = Workspace
 arcpy.env.overwriteOutput = True
 arcpy.gp.overwriteOutput = True
 
 # Generated initial variables
-env.workspace = Workspace
 dir_string = os.path.join(Workspace, outputfolder)
 shp_output_dir = os.path.join(dir_string, "shapefiles")
 files = find_all_csv(dir_string)
+li = []
+csv_files = find_all_csv(os.path.join(dir_string, "MegaAlaska\covariates"))
+for f in csv_files:
+    print "Leveraging Covariate file: {0}".format(f)
 
-#############
-# Data Prep #
-#############
+# #############
+# # Data Prep #
+# #############
 
 try:
     env.overwriteOutput = True
     arcpy.AddMessage("Creating spatially referenced csv files...")
     """ cbind coords to covaraites """
+
     covariates = pd.concat([permafrost, heatload, temp, slope, cti, texture, coords], axis=1)
 
     # Write to csv
     covariates.to_csv(os.path.join(outputfolder, "covariates.csv"), index=False)
-
+    # Convert ot Shapefile
     shapefile_conversion(files, dir_string, shp_output_dir, projcode)
 
 except arcpy.AddError("\tThere may be an issue with your input files."):
@@ -198,7 +236,7 @@ try:
     ro.r('''
     if (!require("pacman")) install.packages("pacman")
     pacman::p_load(sp, rgdal, raster)
-    ak_proj <- readOGR(dsn, "AK_proj")
+    ak_proj <- readOGR(dsn, "Alaska")
     covariates  <- readOGR(dsn,"covariates")
     a  <- project(covariates@coords, proj4string(ak_proj))
     b <- cbind(a, covariates@data[,1:6])
@@ -208,8 +246,8 @@ try:
     ab <- spTransform(b,CRS(proj4string(ak_proj)))
     ''')
 
-    if arcpy.Exists(outfc):
-            arcpy.Delete_management(outfc)
+    if arcpy.Exists(projected_covariates):
+            arcpy.Delete_management(projected_covariates)
     ro.r('writeOGR(b, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
 
 except arcpy.AddMessage("An error occurred during processing:\n"):
@@ -218,18 +256,20 @@ except arcpy.AddMessage("An error occurred during processing:\n"):
 ####################
 # Spatial Analysis #
 ####################
+
+# Change working directory
 arcpy.env.workspace = shp_output_dir
+
 # Hardcode generic spatial join file names
 yukon_shp = os.path.basename(yukon_shp)
 join_file = "spatial_join.shp"
 join_proj_file = "spatial_join_proj.shp"
 
 # Perform Clip
-clip_features(outfc, yukon_shp, yukon_cov)
+clip_features(projected_covariates, yukon_shp, yukon_cov)
 
 # Join the permafrost feature class to the covariate feature class
 # Process: Spatial Join
-
 myJoin = SpatialJoin(yukon_shp, yukon_cov, join_file, projcode)
 myJoin.spatial_join()
 myJoin.define_and_project(join_proj_file)
@@ -238,7 +278,10 @@ try:
     # Create Spatial Weights Matrix for Calculations
     # Process: Generate Spatial Weights Matrix
     arcpy.AddMessage("\tBuilding Spatial Weights Matrix...")
-    swm = arcpy.GenerateSpatialWeightsMatrix_stats("spatial_join_proj.shp", "JOIN_FID", "spatial_weights.swm", "K_NEAREST_NEIGHBORS")
+    swm = arcpy.GenerateSpatialWeightsMatrix_stats(Input_Feature_Class="spatial_join_proj.shp",
+                                                   Unique_ID_Field="JOIN_FID",
+                                                   Output_Spatial_Weights_Matrix_File="spatial_weights.swm",
+                                                   Conceptualization_of_Spatial_Relationships="K_NEAREST_NEIGHBORS")
     arcpy.AddMessage("\tSpatial Weights Matrix generated...")
 
     # Exploratory Regression Analysis for permafrost
@@ -254,6 +297,8 @@ try:
                                            Minimum_Acceptable_Adj_R_Squared="0.3",
                                            Maximum_Coefficient_p_value_Cutoff="0.10",
                                            Maximum_VIF_Value_Cutoff="7.5")
+    # Move results.txt to data folder
+    arcpy.Copy_management("results.txt", os.path.join(dir_string,"regression_results\\results.txt"))
     arcpy.AddMessage("Regression Analysis Complete.")
 
 except arcpy.ExecuteError("An error occurred during processing:\n"):
@@ -261,5 +306,10 @@ except arcpy.ExecuteError("An error occurred during processing:\n"):
     arcpy.AddError(msgs)
     arcpy.AddError("\nP Check that inputs are formatted correctly.")
 
+# Make a Map
+make_map()
+
 arcpy.AddMessage("End of Processing.")
+arcpy.AddMessage("Please find Exploratory Regression Results in data/regression_results/results.txt")
+
 arcpy.AddMessage("******* Output from R Console Below *******")
