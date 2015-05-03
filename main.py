@@ -16,22 +16,11 @@ The goal of this tool is to demonstrate how to generate mxd reports
 with maps for a Regression analysis.
 
 Instructions
-1) Default values: Alter the path to suit your setup.
-"C:\path\to\GIS540_project_jamatney"
-"data\MegaAlaska\covariates\coords.csv"
-"data\MegaAlaska\covariates\permafrost.csv"
-"data\MegaAlaska\covariates\heatload.csv"
-"data\MegaAlaska\covariates\temp.csv"
-"data\MegaAlaska\covariates\slope.csv"
-"data\MegaAlaska\covariates\cti.csv"
-"data\MegaAlaska\covariates\texture.csv"
-"data"
-"yukon_proj.shp"
-"3338"
-"covariates_proj.shp"
-"project.mxd"
+1) use attached rpy2Pandas.pdf to install rpy and pandas
 2) When R prompts you to use a personal directory, select Yes,
 then select a CRAN mirror nearest to you (USA-MD works well)
+3) If Exploratory Regression Analysis fails, Comment out 289 - 308 and
+uncomment 278 - 284 to use GWR for the purpose of having output.
 """
 
 # Import system modules
@@ -144,11 +133,13 @@ def clip_features(inf, clip, out):
     arcpy.AddMessage("\tClip Executed, Leveraging for further analysis...")
 
 
-def make_map():
+def make_map(dir):
+    prev_workspace = arcpy.env.workspace
+    arcpy.env.workspace = dir
     #Make a Map Document
     try:
         mapList = arcpy.ListFiles("*.mxd")
-        mxd_path = os.path.join(shp_output_dir, mapList[0])
+        mxd_path = os.path.join(dir, mapList[0])
 
         mxd = arcpy.mapping.MapDocument(mxd_path)
         data_frames = arcpy.mapping.ListDataFrames(mxd)
@@ -163,34 +154,36 @@ def make_map():
             layer_object = arcpy.mapping.Layer(f)
             arcpy.mapping.AddLayer(data_frame, layer_object)
 
-        arcpy.RefreshActiveView()
         arcpy.RefreshTOC()
-        project_map = map_document[:-4] + "Preview.mxd"
-        mxd.saveACopy(os.path.join(dir_string, project_map))
-        os.startfile(os.path.join(dir_string, project_map))
+        project_map = map_document[:-4] + "Presentation.mxd"
+        mxd.saveACopy(os.path.join(prev_workspace, project_map))
+        os.startfile(os.path.join(prev_workspace, project_map))
+        arcpy.env.workspace = prev_workspace
         del mxd
     except arcpy.AddMessage("\tPlease check inputs"):
         arcpy.GetMessages()
 
+
+
 # User Parameters and variable setup
-Workspace = arcpy.GetParameterAsText(0)
+Workspace = arcpy.GetParameterAsText(0)  # C:\Users\jamatney\Desktop\GIS540_project_jamatney
 
 # load covariates
-coords = pd.read_csv(arcpy.GetParameterAsText(1))
-permafrost = pd.read_csv(arcpy.GetParameterAsText(2))
-heatload = pd.read_csv(arcpy.GetParameterAsText(3))
-temp = pd.read_csv(arcpy.GetParameterAsText(4))
-slope = pd.read_csv(arcpy.GetParameterAsText(5))
-cti = pd.read_csv(arcpy.GetParameterAsText(6))
-texture = pd.read_csv(arcpy.GetParameterAsText(7))
+coords = pd.read_csv(arcpy.GetParameterAsText(1))  # data\MegaAlaska\covariates\coords.csv
+permafrost = pd.read_csv(arcpy.GetParameterAsText(2))  # data\MegaAlaska\covariates\permafrost.csv
+heatload = pd.read_csv(arcpy.GetParameterAsText(3))  # data\MegaAlaska\covariates\heatload.csv
+temp = pd.read_csv(arcpy.GetParameterAsText(4))  # data\MegaAlaska\covariates\temp.csv
+slope = pd.read_csv(arcpy.GetParameterAsText(5))  # data\MegaAlaska\covariates\slope.csv
+cti = pd.read_csv(arcpy.GetParameterAsText(6))  # data\MegaAlaska\covariates\cti.csv
+texture = pd.read_csv(arcpy.GetParameterAsText(7))  # data\MegaAlaska\covariates\texture.csv
 
 # set output folders
-outputfolder = arcpy.GetParameterAsText(8)
-denali = arcpy.GetParameterAsText(9)
-projcode = int(arcpy.GetParameterAsText(10))
-projected_covariates = arcpy.GetParameterAsText(11)
-join_file = arcpy.GetParameterAsText(12)
-map_document = arcpy.GetParameterAsText(13)
+outputfolder = arcpy.GetParameterAsText(8)  # data
+denali = arcpy.GetParameterAsText(9)  # input\discontinuous_zone.shp
+projcode = int(arcpy.GetParameterAsText(10))  # 3338
+projected_covariates = arcpy.GetParameterAsText(11)  # covariates_proj.shp
+join_file = arcpy.GetParameterAsText(12)  # spatial_join.shp
+map_document = arcpy.GetParameterAsText(13)  # project_jamatney.mxd
 denali_cov = os.path.basename(denali)[:-4] + "_covariates.shp"
 
 # Environmental Variables
@@ -268,62 +261,61 @@ arcpy.gp.overwriteOutput = True
 
 # Hardcode generic spatial join file names
 denali_base = os.path.basename(denali)
-#join_proj_file = "spatial_join_proj.shp"
-#
-# # Perform Clip
-clip_features(projected_covariates, denali, denali_cov)
-#
-# Join the permafrost feature class to the covariate feature class
 
+# Perform Clip
+clip_features(projected_covariates, denali, denali_cov)
+
+# Join the permafrost feature class to the covariate feature class
 # Process: Spatial Join
 myJoin = SpatialJoin(denali, denali_cov, join_file, projcode)
 myJoin.spatial_join()
-#myJoin.define_and_project(join_proj_file)
 
 try:
-    arcpy.AddMessage("\tGeographically Weighted Regression...")
+    # If exploratory regression fails use GWR
+    # arcpy.AddMessage("\tGeographically Weighted Regression...")
     # Replace a layer/table view name with a path to a dataset (which can be a layer file) or create the layer/table view within the script
-# The following inputs are layers or table views: "spatial_join"
-    gwr = arcpy.GeographicallyWeightedRegression_stats(in_features=join_file,dependent_field="permafrost",
-                                                       explanatory_field="heatload;temp;slope;cti",
-                                                       out_featureclass="GeographicallyWeightedRegression",
-                                                       kernel_type="FIXED",bandwidth_method="AICc",
-                                                       distance="#",number_of_neighbors="30",
-                                                       weight_field="#",coefficient_raster_workspace="#",
-                                                       cell_size="0.306677063650721",in_prediction_locations="#",
-                                                       prediction_explanatory_field="#",out_prediction_featureclass="#")
+    # The following inputs are layers or table views: "spatial_join"
+    # gwr = arcpy.GeographicallyWeightedRegression_stats(in_features=join_file,dependent_field="permafrost",
+    #                                                    explanatory_field="heatload;temp;slope;cti",
+    #                                                    out_featureclass="GeographicallyWeightedRegression",
+    #                                                    kernel_type="FIXED",bandwidth_method="AICc",
+    #                                                    distance="#",number_of_neighbors="30",
+    #                                                    weight_field="#",coefficient_raster_workspace="#",
+    #                                                    cell_size="0.306677063650721",in_prediction_locations="#",
+    #                                                    prediction_explanatory_field="#",out_prediction_featureclass="#")
 
+    #Create Spatial Weights Matrix for Calculations
+    #Process: Generate Spatial Weights Matrix
+    arcpy.AddMessage("\tBuilding Spatial Weights Matrix...")
+    swm = arcpy.GenerateSpatialWeightsMatrix_stats(Input_Feature_Class=join_file,
+                                                   Unique_ID_Field="JOIN_FID",
+                                                   Output_Spatial_Weights_Matrix_File="spatial_weights.swm",
+                                                   Conceptualization_of_Spatial_Relationships="K_NEAREST_NEIGHBORS")
+    arcpy.AddMessage("\tSpatial Weights Matrix generated...")
 
-    # Create Spatial Weights Matrix for Calculations
-    # Process: Generate Spatial Weights Matrix
-    # arcpy.AddMessage("\tBuilding Spatial Weights Matrix...")
-    # swm = arcpy.GenerateSpatialWeightsMatrix_stats(Input_Feature_Class="spatial_join.shp",
-    #                                                Unique_ID_Field="JOIN_FID",
-    #                                                Output_Spatial_Weights_Matrix_File="spatial_weights.swm",
-    #                                                Conceptualization_of_Spatial_Relationships="K_NEAREST_NEIGHBORS")
-    # arcpy.AddMessage("\tSpatial Weights Matrix generated...")
+    Exploratory Regression Analysis for permafrost
+    arcpy.AddMessage("\tPerforming Exploratory Spatial Regression...")
+    er = arcpy.ExploratoryRegression_stats(Input_Features=join_file,
+                                           Dependent_Variable="permafrost",
+                                           Candidate_Explanatory_Variables=\
+                                           "heatload;temp;slope;cti;texture",
+                                           Weights_Matrix_File="spatial_weights.swm",
+                                           Output_Report_File="results.txt",
+                                           Maximum_Number_of_Explanatory_Variables="5",
+                                           Minimum_Number_of_Explanatory_Variables="1",
+                                           Minimum_Acceptable_Adj_R_Squared="0.3",
+                                           Maximum_Coefficient_p_value_Cutoff="0.10",
+                                           Maximum_VIF_Value_Cutoff="7.5")
 
-    # Exploratory Regression Analysis for permafrost
-    # arcpy.AddMessage("\tPerforming Exploratory Spatial Regression...")
-    # er = arcpy.ExploratoryRegression_stats(Input_Features="spatial_join.shp",
-    #                                        Dependent_Variable="permafrost",
-    #                                        Candidate_Explanatory_Variables=\
-    #                                        "heatload;temp;slope;cti;texture",
-    #                                        Weights_Matrix_File="spatial_weights.swm",
-    #                                        Output_Report_File="results.txt",
-    #                                        Maximum_Number_of_Explanatory_Variables="5",
-    #                                        Minimum_Number_of_Explanatory_Variables="1",
-    #                                        Minimum_Acceptable_Adj_R_Squared="0.3",
-    #                                        Maximum_Coefficient_p_value_Cutoff="0.10",
-    #                                        Maximum_VIF_Value_Cutoff="7.5")
     # Move results.txt to data folder
-    # if arcpy.Exists( os.path.join(shp_output_dir, "results.txt")):
-    #     shutil.move( os.path.join(shp_output_dir, "results.txt"),
-    #                  os.path.join(dir_string, "regression_results\\results.txt"))
-    #
-    # if arcpy.Exists( os.path.join(shp_output_dir, "results.txt.xml")):
-    #     shutil.move( os.path.join(shp_output_dir, "results.txt.xml"),
-    #                  os.path.join(dir_string, "regression_results\\results.txt.xml"))
+    if arcpy.Exists( os.path.join(shp_output_dir, "results.txt")):
+        shutil.move( os.path.join(shp_output_dir, "results.txt"),
+                     os.path.join(dir_string, "regression_results\\results.txt"))
+
+    if arcpy.Exists( os.path.join(shp_output_dir, "results.txt.xml")):
+        shutil.move( os.path.join(shp_output_dir, "results.txt.xml"),
+                     os.path.join(dir_string, "regression_results\\results.txt.xml"))
+
 
     if arcpy.Exists(join_file):
         arcpy.Delete_management(join_file)
@@ -335,8 +327,11 @@ except arcpy.ExecuteError("An error occurred during processing:\n"):
     arcpy.AddError(msgs)
     arcpy.AddError("\nP Check that inputs are formatted correctly.")
 
+# Reset workspace to home directory
+arcpy.env.workspace = Workspace
+
 # Make a Map
-make_map()
+make_map(shp_output_dir)
 
 arcpy.AddMessage("End of Processing.")
 arcpy.AddMessage("Please find Exploratory Regression Results in data/regression_results/results.txt")
