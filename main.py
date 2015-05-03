@@ -47,6 +47,7 @@ class SpatialJoin:
         self.covariate_shp = covariate_shp
         self.outfile_shp = outfile_shp
         self.spatial_ref = spatial_ref
+        self.output_feature_class = None
 
     def spatial_join(self):
         fieldMappings = arcpy.FieldMappings()
@@ -92,16 +93,17 @@ class SpatialJoin:
             print "{0} is a type of {1} with a length of {2}"\
                 .format(field.name, field.type, field.length)
 
-    def define_and_project(self, output_feature_class):
-        """Define spatial projection and create projected outfile"""
-        prjfile = arcpy.SpatialReference(self.spatial_ref)
-        arcpy.DefineProjection_management(self.outfile_shp, prjfile)
-        sr = arcpy.Describe(self.outfile_shp).spatialReference
-
-        print "Your spatial reference code corresponds to: {0}".format(sr.name)
-
-        # Create projected outfile
-        arcpy.Project_management(self.outfile_shp, output_feature_class, self.spatial_ref)
+    # def define_and_project(self, ofc):
+    #     self.output_feature_class = ofc
+    #     """Define spatial projection and create projected outfile"""
+    #     prjfile = arcpy.SpatialReference(self.spatial_ref)
+    #     arcpy.DefineProjection_management(self.outfile_shp, prjfile)
+    #     sr = arcpy.Describe(self.outfile_shp).spatialReference
+    #     print "Your ouput feature calss is : {0}".format(self.output_feature_class)
+    #     print "Your spatial reference code corresponds to: {0}".format(sr.name)
+    #
+    #     # Create projected outfile
+    #     arcpy.Project_management(self.outfile_shp, self.output_feature_class, self.spatial_ref)
 
 
 def find_all_csv(workspace):
@@ -135,7 +137,7 @@ def shapefile_conversion(file_list, csv_location, output_location, spatial_refer
 
 
 def clip_features(inf, clip, out):
-    arcpy.AddMessage("\tClipping data to Yukon Counties...")
+    arcpy.AddMessage("\tClipping data to Denali Counties...")
 
     # Execute Clip
     arcpy.Clip_analysis(inf, clip, out)
@@ -184,11 +186,11 @@ texture = pd.read_csv(arcpy.GetParameterAsText(7))
 
 # set output folders
 outputfolder = arcpy.GetParameterAsText(8)
-yukon_shp = arcpy.GetParameterAsText(9)
+denali = arcpy.GetParameterAsText(9)
 projcode = int(arcpy.GetParameterAsText(10))
-projected_covariates = str(arcpy.GetParameterAsText(11))
+projected_covariates = arcpy.GetParameterAsText(11)
 map_document = arcpy.GetParameterAsText(12)
-yukon_cov = os.path.basename(yukon_shp)[:-4] + "_covariates.shp"
+denali_cov = os.path.basename(denali)[:-4] + "_covariates.shp"
 
 # Environmental Variables
 arcpy.env.workspace = Workspace
@@ -199,14 +201,15 @@ arcpy.gp.overwriteOutput = True
 dir_string = os.path.join(Workspace, outputfolder)
 shp_output_dir = os.path.join(dir_string, "shapefiles")
 files = find_all_csv(dir_string)
-li = []
+print arcpy.env.workspace
 csv_files = find_all_csv(os.path.join(dir_string, "MegaAlaska\covariates"))
+print csv_files
 for f in csv_files:
     print "Leveraging Covariate file: {0}".format(f)
 
-# #############
-# # Data Prep #
-# #############
+#############
+# Data Prep #
+#############
 
 try:
     env.overwriteOutput = True
@@ -238,17 +241,18 @@ try:
     pacman::p_load(sp, rgdal, raster)
     ak_proj <- readOGR(dsn, "Alaska")
     covariates  <- readOGR(dsn,"covariates")
-    a  <- project(covariates@coords, proj4string(ak_proj))
-    b <- cbind(a, covariates@data[,1:6])
-    colnames(b) <- c("x","y","permafrost","heatload","temp","slope","cti","texture")
-    coordinates(b) <-~x+y
-    proj4string(b) <- proj4string(ak_proj)
-    ab <- spTransform(b,CRS(proj4string(ak_proj)))
+    cov.a  <- project(covariates@coords, proj4string(ak_proj))
+    cov.b <- cbind(cov.a, covariates@data[,1:6])
+    colnames(cov.b) <- c("x","y","permafrost","heatload","temp","slope","cti","texture")
+    coordinates(cov.b) <-~x+y
+    proj4string(cov.b) <- proj4string(ak_proj)
+    cov.ab <- spTransform(cov.b,CRS(proj4string(ak_proj)))
     ''')
 
     if arcpy.Exists(projected_covariates):
+            arcpy.Delete_management("covariates.shp")
             arcpy.Delete_management(projected_covariates)
-    ro.r('writeOGR(b, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
+    ro.r('writeOGR(cov.ab, dsn, layer="covariates_proj", driver="ESRI Shapefile")')
 
 except arcpy.AddMessage("An error occurred during processing:\n"):
     arcpy.GetMessages()
@@ -261,18 +265,19 @@ except arcpy.AddMessage("An error occurred during processing:\n"):
 arcpy.env.workspace = shp_output_dir
 
 # Hardcode generic spatial join file names
-yukon_shp = os.path.basename(yukon_shp)
+denali_base = os.path.basename(denali)
 join_file = "spatial_join.shp"
 join_proj_file = "spatial_join_proj.shp"
-
-# Perform Clip
-clip_features(projected_covariates, yukon_shp, yukon_cov)
-
+#
+# # Perform Clip
+clip_features(projected_covariates, denali, denali_cov)
+#
 # Join the permafrost feature class to the covariate feature class
+
 # Process: Spatial Join
-myJoin = SpatialJoin(yukon_shp, yukon_cov, join_file, projcode)
+myJoin = SpatialJoin(denali, denali_cov, join_file, projcode)
 myJoin.spatial_join()
-myJoin.define_and_project(join_proj_file)
+# myJoin.define_and_project(join_proj_file)
 
 try:
     # Create Spatial Weights Matrix for Calculations
@@ -298,13 +303,13 @@ try:
     #                                        Maximum_Coefficient_p_value_Cutoff="0.10",
     #                                        Maximum_VIF_Value_Cutoff="7.5")
     # Move results.txt to data folder
-    if arcpy.Exists( os.path.join(shp_output_dir,"results.txt")):
-        shutil.move( os.path.join(shp_output_dir,"results.txt"), 
-                     os.path.join(dir_string,"regression_results\\results.txt"))
+    if arcpy.Exists( os.path.join(shp_output_dir, "results.txt")):
+        shutil.move( os.path.join(shp_output_dir, "results.txt"),
+                     os.path.join(dir_string, "regression_results\\results.txt"))
 
-    if arcpy.Exists( os.path.join(shp_output_dir,"results.txt.xml")):
-        shutil.move( os.path.join(shp_output_dir,"results.txt.xml"), 
-                     os.path.join(dir_string,"regression_results\\results.txt.xml"))
+    if arcpy.Exists( os.path.join(shp_output_dir, "results.txt.xml")):
+        shutil.move( os.path.join(shp_output_dir, "results.txt.xml"),
+                     os.path.join(dir_string, "regression_results\\results.txt.xml"))
 
     arcpy.AddMessage("Regression Analysis Complete.")
 
