@@ -293,7 +293,7 @@ try:
                                                    Conceptualization_of_Spatial_Relationships="K_NEAREST_NEIGHBORS")
     arcpy.AddMessage("\tSpatial Weights Matrix generated...")
 
-    Exploratory Regression Analysis for permafrost
+    #Exploratory Regression Analysis for permafrost
     arcpy.AddMessage("\tPerforming Exploratory Spatial Regression...")
     er = arcpy.ExploratoryRegression_stats(Input_Features=join_file,
                                            Dependent_Variable="permafrost",
